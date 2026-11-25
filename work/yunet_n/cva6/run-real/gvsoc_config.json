@@ -1,0 +1,382 @@
+{
+  "target": {
+    "clock": {
+      "vp_component": "vp.clock_engine_module",
+      "frequency": 1000000000,
+      "factor": 1,
+      "ports": [
+        "out"
+      ]
+    },
+    "soc": {
+      "dram": {
+        "init": true,
+        "size": 268435456,
+        "stim_file": null,
+        "power_trigger": false,
+        "width_bits": -1,
+        "align": 0,
+        "latency": 0,
+        "truncate_size": 0,
+        "vp_component": "gen_memory_memory_cpp_105025602",
+        "ports": [
+          "input"
+        ]
+      },
+      "mem": {
+        "init": true,
+        "size": 2147483648,
+        "stim_file": null,
+        "power_trigger": false,
+        "width_bits": -1,
+        "align": 0,
+        "latency": 0,
+        "truncate_size": 0,
+        "vp_component": "gen_memory_memory_cpp_105025602",
+        "ports": [
+          "input"
+        ]
+      },
+      "control_regs": {
+        "dram_end": 3221225472,
+        "vp_component": "gen_pulp_cva6_control_regs_cpp_143398928",
+        "ports": [
+          "input"
+        ]
+      },
+      "stdout": {
+        "vp_component": "pulp.stdout.stdout_v3_impl",
+        "max_cluster": 33,
+        "max_core_per_cluster": 16,
+        "user_set_core_id": 3735928559,
+        "user_set_cluster_id": 3735928559,
+        "ports": [
+          "input"
+        ]
+      },
+      "dico": {
+        "mappings": {
+          "mem": {
+            "base": 2147483648,
+            "size": 2147483648,
+            "remove_offset": 0,
+            "add_offset": 0,
+            "latency": 0
+          },
+          "stdout": {
+            "base": 3221225472,
+            "size": 268435456,
+            "remove_offset": 3221225472,
+            "add_offset": 0,
+            "latency": 0
+          },
+          "dram": {
+            "base": 2952790016,
+            "size": 268435456,
+            "remove_offset": 2952790016,
+            "add_offset": 0,
+            "latency": 100
+          },
+          "control_regs": {
+            "base": 3489660928,
+            "size": 268435456,
+            "remove_offset": 3489660928,
+            "add_offset": 0,
+            "latency": 0
+          }
+        },
+        "latency": 0,
+        "bandwidth": 0,
+        "shared_rw_bandwidth": false,
+        "max_input_pending_size": 0,
+        "nb_input_port": 1,
+        "vp_component": "gen_interco_router_router_common_cpp_59666758",
+        "ports": [
+          "mem",
+          "stdout",
+          "dram",
+          "control_regs",
+          "input"
+        ]
+      },
+      "l2_ico": {
+        "mappings": {
+          "l2": {
+            "base": 2147483648,
+            "size": 2147483648,
+            "remove_offset": 0,
+            "add_offset": 0,
+            "latency": 0
+          }
+        },
+        "latency": 0,
+        "bandwidth": 0,
+        "shared_rw_bandwidth": false,
+        "max_input_pending_size": 0,
+        "nb_input_port": 2,
+        "vp_component": "gen_interco_router_router_common_cpp_59666758",
+        "ports": [
+          "input",
+          "input_1",
+          "l2"
+        ]
+      },
+      "mem_ico": {
+        "mappings": {
+          "mem": {
+            "base": 2147483648,
+            "size": 2147483648,
+            "remove_offset": 2147483648,
+            "add_offset": 0,
+            "latency": 100
+          },
+          "dram": {
+            "base": 2952790016,
+            "size": 268435456,
+            "remove_offset": 2952790016,
+            "add_offset": 0,
+            "latency": 100
+          }
+        },
+        "latency": 0,
+        "bandwidth": 0,
+        "shared_rw_bandwidth": false,
+        "max_input_pending_size": 0,
+        "nb_input_port": 1,
+        "vp_component": "gen_interco_router_router_common_cpp_59666758",
+        "ports": [
+          "input",
+          "mem",
+          "dram"
+        ]
+      },
+      "icache": {
+        "size": 16384,
+        "line_size": 64,
+        "ways": 4,
+        "hit_latency": 0,
+        "miss_latency": 0,
+        "refill_cycles": 4,
+        "write_cycles": 1,
+        "write_allocate": false,
+        "store_buffer_size": 0,
+        "writeback": false,
+        "stats": true,
+        "vp_component": "gen_hetero_timing_cache_cpp_32412097",
+        "ports": [
+          "output",
+          "input"
+        ]
+      },
+      "dcache": {
+        "size": 32768,
+        "line_size": 64,
+        "ways": 8,
+        "hit_latency": 1,
+        "miss_latency": 0,
+        "refill_cycles": 4,
+        "write_cycles": 1,
+        "write_allocate": false,
+        "store_buffer_size": 8,
+        "writeback": false,
+        "stats": true,
+        "vp_component": "gen_hetero_timing_cache_cpp_32412097",
+        "ports": [
+          "input",
+          "output"
+        ]
+      },
+      "l2": {
+        "size": 524288,
+        "line_size": 64,
+        "ways": 8,
+        "hit_latency": 10,
+        "miss_latency": 0,
+        "refill_cycles": 8,
+        "write_cycles": 1,
+        "write_allocate": true,
+        "store_buffer_size": 8,
+        "writeback": false,
+        "stats": true,
+        "vp_component": "gen_hetero_timing_cache_cpp_32412097",
+        "ports": [
+          "input",
+          "output"
+        ]
+      },
+      "host": {
+        "isa": "rv64imafdc",
+        "misa": 266541,
+        "first_external_pcer": 0,
+        "riscv_dbg_unit": false,
+        "binaries": [],
+        "debug_handler": 0,
+        "power_models": {},
+        "cluster_id": 0,
+        "core_id": 0,
+        "fetch_enable": false,
+        "boot_addr": 2147483648,
+        "has_double": true,
+        "timed": true,
+        "vp_component": "gen_isa_cva6_rv64imafdc_80149279_cpp_94383480",
+        "ports": [
+          "data",
+          "fetch",
+          "fetchen"
+        ]
+      },
+      "loader": {
+        "vp_component": "utils.loader.loader",
+        "binary": [
+          "/home/glhrm/Trabalho/M4IA/work/yunet_n/cva6/net.elf"
+        ],
+        "ports": [
+          "out",
+          "start"
+        ]
+      },
+      "bindings": [
+        [
+          "dico->mem",
+          "dcache->input"
+        ],
+        [
+          "dico->stdout",
+          "stdout->input"
+        ],
+        [
+          "dico->dram",
+          "dram->input"
+        ],
+        [
+          "dico->control_regs",
+          "control_regs->input"
+        ],
+        [
+          "icache->output",
+          "l2_ico->input"
+        ],
+        [
+          "dcache->output",
+          "l2_ico->input_1"
+        ],
+        [
+          "l2_ico->l2",
+          "l2->input"
+        ],
+        [
+          "l2->output",
+          "mem_ico->input"
+        ],
+        [
+          "mem_ico->mem",
+          "mem->input"
+        ],
+        [
+          "mem_ico->dram",
+          "dram->input"
+        ],
+        [
+          "host->data",
+          "dico->input"
+        ],
+        [
+          "host->fetch",
+          "icache->input"
+        ],
+        [
+          "loader->out",
+          "mem_ico->input"
+        ],
+        [
+          "loader->start",
+          "host->fetchen"
+        ]
+      ],
+      "components": [
+        "dram",
+        "mem",
+        "control_regs",
+        "stdout",
+        "dico",
+        "l2_ico",
+        "mem_ico",
+        "icache",
+        "dcache",
+        "l2",
+        "host",
+        "loader"
+      ],
+      "ports": [
+        "clock"
+      ]
+    },
+    "gdbserver": {
+      "enabled": false,
+      "port": 12345,
+      "default_hartid": "",
+      "vp_component": "gdbserver.gdbserver"
+    },
+    "gvsoc": {
+      "proxy": {
+        "enabled": false,
+        "port": 42951
+      },
+      "events": {
+        "enabled": false,
+        "include_raw": [],
+        "include_regex": [],
+        "exclude_regex": [],
+        "format": "vcd",
+        "active": false,
+        "all": true,
+        "gtkw": false,
+        "gen_gtkw": false,
+        "files": [],
+        "traces": {},
+        "tags": [
+          "overview"
+        ],
+        "use-external-dumper": null
+      },
+      "include_dirs": [
+        "/home/glhrm/Trabalho/M4IA/deps/gvsoc/install/models"
+      ],
+      "runner_module": "gv.gvsoc",
+      "cycles_to_seconds": "int(max(cycles * nb_cores / 5000000, 600))",
+      "werror": true,
+      "verbose": true,
+      "debug-mode": false,
+      "profile-mode": false,
+      "asserts-mode": false,
+      "launchers": {
+        "default": "gvsoc_launcher",
+        "debug": "gvsoc_launcher_debug",
+        "asserts": "gvsoc_launcher_asserts"
+      },
+      "traces": {
+        "level": "debug",
+        "format": "long",
+        "float_hex": false,
+        "enabled": false,
+        "include_regex": [],
+        "exclude_regex": []
+      },
+      "systemc": false,
+      "wunconnected-padfun": false,
+      "memcheck": false,
+      "power": false
+    },
+    "bindings": [
+      [
+        "clock->out",
+        "soc->clock"
+      ]
+    ],
+    "components": [
+      "clock",
+      "soc",
+      "gdbserver"
+    ]
+  }
+}
