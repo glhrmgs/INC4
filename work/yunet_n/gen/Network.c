@@ -4,6 +4,8 @@
 #include <stdlib.h>
 
 #include "Network.h"
+#include "yunet_diag_refs.h"
+
 
 float32_t *DeeployNetwork_input_0;
 float32_t *DeeployNetwork_output_0;
@@ -13789,6 +13791,7 @@ void RunNetwork(__attribute__((unused)) uint32_t core_id, __attribute__((unused)
       ref_DeeployNetwork_306_tensor_DeeployNetwork_306_tensor += 400;
     }
     END_SINGLE_CORE
+    YUNET_DIAG_COMPARE("Conv_73/tensor_306", DeeployNetwork_306_tensor, diag_ref_306, 400);
   }
   {
     DeeployNetwork_312_tensor = (float32_t *)deeploy_malloc(4 * 100);
@@ -13823,6 +13826,7 @@ void RunNetwork(__attribute__((unused)) uint32_t core_id, __attribute__((unused)
       ref_DeeployNetwork_318_tensor_DeeployNetwork_318_tensor += 1000;
     }
     END_SINGLE_CORE
+    YUNET_DIAG_COMPARE("Conv_85/tensor_318", DeeployNetwork_318_tensor, diag_ref_318, 1000);
 
     SINGLE_CORE deeploy_free(DeeployNetwork_295_tensor);
   }
@@ -13961,6 +13965,7 @@ void RunNetwork(__attribute__((unused)) uint32_t core_id, __attribute__((unused)
       ref_DeeployNetwork_319_tensor_DeeployNetwork_319_tensor += 1000;
     }
     END_SINGLE_CORE
+    YUNET_DIAG_COMPARE("Conv_86/tensor_319", DeeployNetwork_319_tensor, diag_ref_319, 1000);
 
     SINGLE_CORE deeploy_free(DeeployNetwork__EXTRACT_CONV_PASS_36_padded_input);
   }
@@ -13998,6 +14003,7 @@ void RunNetwork(__attribute__((unused)) uint32_t core_id, __attribute__((unused)
       ref_DeeployNetwork_307_tensor_DeeployNetwork_307_tensor += 400;
     }
     END_SINGLE_CORE
+    YUNET_DIAG_COMPARE("Conv_74/tensor_307", DeeployNetwork_307_tensor, diag_ref_307, 400);
 
     SINGLE_CORE deeploy_free(DeeployNetwork__EXTRACT_CONV_PASS_34_padded_input);
   }
@@ -14361,6 +14367,7 @@ void RunNetwork(__attribute__((unused)) uint32_t core_id, __attribute__((unused)
       ref_DeeployNetwork_304_tensor_DeeployNetwork_304_tensor += 1600;
     }
     END_SINGLE_CORE
+    YUNET_DIAG_COMPARE("Conv_71/tensor_304", DeeployNetwork_304_tensor, diag_ref_304, 1600);
   }
   {
     DeeployNetwork_310_tensor = (float32_t *)deeploy_malloc(4 * 400);
@@ -14395,6 +14402,7 @@ void RunNetwork(__attribute__((unused)) uint32_t core_id, __attribute__((unused)
       ref_DeeployNetwork_316_tensor_DeeployNetwork_316_tensor += 4000;
     }
     END_SINGLE_CORE
+    YUNET_DIAG_COMPARE("Conv_83/tensor_316", DeeployNetwork_316_tensor, diag_ref_316, 4000);
 
     SINGLE_CORE deeploy_free(DeeployNetwork_291_tensor);
   }
@@ -14533,6 +14541,7 @@ void RunNetwork(__attribute__((unused)) uint32_t core_id, __attribute__((unused)
       ref_DeeployNetwork_317_tensor_DeeployNetwork_317_tensor += 4000;
     }
     END_SINGLE_CORE
+    YUNET_DIAG_COMPARE("Conv_84/tensor_317", DeeployNetwork_317_tensor, diag_ref_317, 4000);
 
     SINGLE_CORE deeploy_free(DeeployNetwork__EXTRACT_CONV_PASS_48_padded_input);
   }
@@ -14570,6 +14579,7 @@ void RunNetwork(__attribute__((unused)) uint32_t core_id, __attribute__((unused)
       ref_DeeployNetwork_305_tensor_DeeployNetwork_305_tensor += 1600;
     }
     END_SINGLE_CORE
+    YUNET_DIAG_COMPARE("Conv_72/tensor_305", DeeployNetwork_305_tensor, diag_ref_305, 1600);
 
     SINGLE_CORE deeploy_free(DeeployNetwork__EXTRACT_CONV_PASS_46_padded_input);
   }
@@ -14777,6 +14787,7 @@ void RunNetwork(__attribute__((unused)) uint32_t core_id, __attribute__((unused)
         DeeployNetwork_287_tensor,
         102400
     );
+    YUNET_DIAG_COMPARE("Relu_56/tensor_287", DeeployNetwork_287_tensor, diag_ref_287, 102400);
 
     printf("\n=== TENSOR 287 (Relu_56) ===\n");
     for (int i = 0; i < 10; i++) {
@@ -14838,6 +14849,7 @@ void RunNetwork(__attribute__((unused)) uint32_t core_id, __attribute__((unused)
       ref_DeeployNetwork_302_tensor_DeeployNetwork_302_tensor += 6400;
     }
     END_SINGLE_CORE
+    YUNET_DIAG_COMPARE("Conv_69/tensor_302", DeeployNetwork_302_tensor, diag_ref_302, 6400);
   }
   {
     DeeployNetwork_308_tensor = (float32_t *)deeploy_malloc(4 * 1600);
@@ -14872,6 +14884,7 @@ void RunNetwork(__attribute__((unused)) uint32_t core_id, __attribute__((unused)
       ref_DeeployNetwork_314_tensor_DeeployNetwork_314_tensor += 16000;
     }
     END_SINGLE_CORE
+    YUNET_DIAG_COMPARE("Conv_81/tensor_314", DeeployNetwork_314_tensor, diag_ref_314, 16000);
 
     SINGLE_CORE deeploy_free(DeeployNetwork_287_tensor);
   }
@@ -15002,6 +15015,7 @@ void RunNetwork(__attribute__((unused)) uint32_t core_id, __attribute__((unused)
       ref_DeeployNetwork_315_tensor_DeeployNetwork_315_tensor += 16000;
     }
     END_SINGLE_CORE
+    YUNET_DIAG_COMPARE("Conv_82/tensor_315", DeeployNetwork_315_tensor, diag_ref_315, 16000);
 
     SINGLE_CORE deeploy_free(DeeployNetwork__EXTRACT_CONV_PASS_58_padded_input);
   }
@@ -15039,6 +15053,7 @@ void RunNetwork(__attribute__((unused)) uint32_t core_id, __attribute__((unused)
       ref_DeeployNetwork_303_tensor_DeeployNetwork_303_tensor += 6400;
     }
     END_SINGLE_CORE
+    YUNET_DIAG_COMPARE("Conv_70/tensor_303", DeeployNetwork_303_tensor, diag_ref_303, 6400);
 
     SINGLE_CORE deeploy_free(DeeployNetwork__EXTRACT_CONV_PASS_56_padded_input);
   }
