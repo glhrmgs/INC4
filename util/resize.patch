@@ -385,3 +385,45 @@
 +
 +        return ctxt, True
 +
+
+
+--- /dev/null	2026-11-25 11:55:28.667204688 -0300
++++ deps/deeploy/Deeploy/Targets/Generic/Templates/ResizeTemplate.py	2026-11-20 00:48:02.572803963 -0300
+@@ -0,0 +1,37 @@
++from Deeploy.DeeployTypes import NodeTemplate
++
++referenceTemplate = NodeTemplate("""
++// Resize nearest/asymmetric/floor
++
++BEGIN_SINGLE_CORE
++
++for (uint32_t n = 0; n < ${batch}; n++) {
++    for (uint32_t c = 0; c < ${ch_im_in}; c++) {
++        for (uint32_t y = 0; y < ${dim_im_out_y}; y++) {
++            uint32_t in_y = (uint32_t)((float)y / ${scale_h});
++
++            if (in_y >= ${dim_im_in_y})
++                in_y = ${dim_im_in_y} - 1;
++
++            for (uint32_t x = 0; x < ${dim_im_out_x}; x++) {
++                uint32_t in_x = (uint32_t)((float)x / ${scale_w});
++
++                if (in_x >= ${dim_im_in_x})
++                    in_x = ${dim_im_in_x} - 1;
++
++                uint32_t in_idx =
++                    ((n * ${ch_im_in} + c) * ${dim_im_in_y} + in_y)
++                    * ${dim_im_in_x} + in_x;
++
++                uint32_t out_idx =
++                    ((n * ${ch_im_in} + c) * ${dim_im_out_y} + y)
++                    * ${dim_im_out_x} + x;
++
++                ${data_out}[out_idx] = ${data_in}[in_idx];
++            }
++        }
++    }
++}
++
++END_SINGLE_CORE
++""")
