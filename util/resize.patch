@@ -1,0 +1,387 @@
+--- ./pipeline/run.py.orig	2026-11-23 23:12:25.524616500 -0300
++++ ./pipeline/run.py	2026-11-23 23:15:08.394972896 -0300
+@@ -180,15 +180,44 @@ def resolve_test_dir(op: str) -> Path:
+              f"(tried absolute path and relative to {DEEPLOY_TEST})")
+ 
+ 
+-def generate_c(test_dir: Path, gen_dir: Path) -> None:
++def generate_c(test_dir: Path, gen_dir: Path, input_types: list[str] | None = None,
++               input_offsets: list[str] | None = None) -> None:
+     gen_dir.mkdir(parents=True, exist_ok=True)
+-    r = sh([str(PYTHON), "generateNetwork.py", "-t", str(test_dir),
+-            "-p", "Generic", "-d", str(gen_dir)], cwd=DEEPLOY_TEST,
+-           produces=[gen_dir])
++    cmd = [str(PYTHON), "generateNetwork.py", "-t", str(test_dir),
++           "-p", "Generic", "-d", str(gen_dir)]
++    if input_types:
++        cmd += ["--input-type-map", *input_types]
++    if input_offsets:
++        cmd += ["--input-offset-map", *input_offsets]
++    r = sh(cmd, cwd=DEEPLOY_TEST, produces=[gen_dir])
+     if r.returncode != 0:
+         sys.exit(f"Deeploy codegen failed:\n{r.stdout}\n{r.stderr}")
+ 
+ 
++def detect_input_types(test_dir: Path) -> tuple[list[str], list[str]]:
++    """Detect the dtype of the network's inputs and return
++    (input_type_map, input_offset_map) suitable for generateNetwork.py.
++
++    Returns ([], []) for int8 networks (the M4IA default) so their codegen is
++    unchanged. For float32 networks (e.g. YuNet), returns
++    (['input_0=float32_t'], ['input_0=0']).
++    """
++    import numpy as np
++
++    inputs_npz = test_dir / "inputs.npz"
++    if not inputs_npz.is_file():
++        return [], []
++    data = np.load(inputs_npz)
++    # The ONNX graph's input order matches the .npz key order in make_op.py's
++    # output; we only care about the first (and for single-input nets, only)
++    # input. All entries must agree.
++    dtypes = {arr.dtype for arr in data.values()}
++    if dtypes == {np.float32} or (len(dtypes) == 1 and np.issubdtype(next(iter(dtypes)), np.floating)):
++        n_inputs = len(data)
++        return [f"input_{i}=float32_t" for i in range(n_inputs)], [f"input_{i}=0" for i in range(n_inputs)]
++    return [], []
++
++
+ # What ld prints when the data does not fit the scratchpad. The snitch and
+ # spatz boards keep all data -- weights included -- in their 128 KiB cluster
+ # TCDM, so a large enough network cannot be built for them at all.
+@@ -449,7 +478,8 @@ def main():
+     gen_dir = work / "gen"
+ 
+     print(f"[1/3] Deeploy: {test_dir.name}/network.onnx -> C  ({gen_dir.relative_to(ROOT)})")
+-    generate_c(test_dir, gen_dir)
++    input_types, input_offsets = detect_input_types(test_dir)
++    generate_c(test_dir, gen_dir, input_types, input_offsets)
+ 
+     results = []
+     cores = [c.strip() for c in args.cores.split(",")]
+
+
+--- ./deps/deeploy/Deeploy/Targets/Generic/TypeCheckers.py.orig	2026-11-20 00:07:24.296240002 -0300
++++ ./deps/deeploy/Deeploy/Targets/Generic/TypeCheckers.py	2026-11-23 23:00:34.441557218 -0300
+@@ -5,10 +5,11 @@
+ from typing import List, Optional, Sequence, Type
+ 
+ import numpy as np
++import onnx_graphsurgeon as gs
+ 
+ from Deeploy.AbstractDataTypes import Pointer
+ from Deeploy.CommonExtensions.TypeCheckers.SignPropTypeChecker import SignPropTypeChecker
+-from Deeploy.DeeployTypes import ConstantBuffer, OperatorRepresentation, VariableBuffer
++from Deeploy.DeeployTypes import ConstantBuffer, NetworkContext, OperatorRepresentation, VariableBuffer
+ 
+ 
+ class ConcatChecker(SignPropTypeChecker):
+@@ -610,3 +611,74 @@ class BatchNormChecker(SignPropTypeCheck
+     def _inferSignedness(self, inputs: List[VariableBuffer],
+                          operatorRepresentation: OperatorRepresentation) -> List[bool]:
+         return [True]
++
++
++class ResizeChecker(SignPropTypeChecker):
++
++    def __init__(
++        self,
++        input_types: Sequence[Type[Pointer]],
++        output_types: Sequence[Type[Pointer]]
++    ):
++        # Espera 4 tipos: data_in, roi, scales, data_out
++        assert len(input_types) == 4, \
++            f"ResizeChecker expects 4 input types (data_in, roi, scales, data_out), got {len(input_types)}"
++        super().__init__(input_types, output_types)
++
++    def typeCheckNodeInputs(self, ctxt: NetworkContext, node: gs.Node) -> bool:
++        """Sobrescreve o typeCheckNodeInputs do NodeTypeChecker para pular
++        ConstantBuffers vazios (o `roi` do Resize tem shape (0,) e o
++        checkPromotion do float32_t estoura em value.max() de array vazio).
++        """
++        retCheck = True
++
++        for inputNode, _type in zip(node.inputs, self.input_types):
++            reference = ctxt.lookup(inputNode.name)
++
++            if not isinstance(reference, VariableBuffer):
++                return False
++
++            if hasattr(reference, "values"):
++                # ConstantBuffer: pula arrays vazios (roi do Resize)
++                if reference.values.size == 0:
++                    continue
++                retCheck &= _type.referencedType.checkPromotion(reference.values)
++            else:
++                # VariableBuffer: comportamento original
++                if ctxt.is_global(inputNode.name):
++                    retCheck &= _type.referencedType.partialOrderUpcast(reference._type.referencedType)
++                    if retCheck:
++                        reference._type = _type
++                        reference._instance = _type(inputNode.name, ctxt)
++                else:
++                    retCheck &= reference._type.referencedType == _type.referencedType
++
++        return retCheck
++
++    def typeInferGlobalCtxt(self, ctxt: NetworkContext, node: gs.Node) -> NetworkContext:
++        """Sobrescreve o typeInferGlobalCtxt do NodeTypeChecker para anotar
++        _type em ConstantBuffers, inclusive os vazios (roi). O original
++        chama checkPromotion, que estoura em array vazio.
++        """
++        for inputNode, _type in zip(node.inputs, self.input_types):
++            if isinstance(ctxt.lookup(inputNode.name), ConstantBuffer):
++                reference = ctxt.lookup(inputNode.name)
++                # Pula a validação de valores para arrays vazios, mas anota
++                if reference.values.size > 0:
++                    if not _type.referencedType.checkPromotion(reference.values):
++                        raise Exception(f"Can't cast {reference} to {_type}!")
++                ctxt.annotateType(inputNode.name, _type)
++
++        return ctxt
++
++    def _inferNumLevels(self, inputs, operatorRepresentation):
++        # Só o data_in importa para o resize; os outros herdam o mesmo nLevels
++        return [inputs[0].nLevels] * len(inputs)
++
++    def _inferSignedness(self, inputs, operatorRepresentation):
++        return [True] * len(inputs)
++
++    def checkOutputType(self, inputs, operatorRepresentation):
++        # Resize não muda o tipo; qualquer tipo de input é aceitável
++        # desde que o output seja do mesmo tipo que o data_in
++        return True
+
+
+--- ./deps/deeploy/Deeploy/Targets/Generic/Bindings.py.orig	2026-11-20 00:02:22.752250998 -0300
++++ ./deps/deeploy/Deeploy/Targets/Generic/Bindings.py	2026-11-23 22:15:19.338385919 -0300
+@@ -21,13 +21,13 @@ from Deeploy.Targets.Generic.Templates i
+     FloatReluTemplate, FloatSigmoidTemplate, FloatSoftmaxTemplate, FloatSqrtTemplate, FloatSubTemplate, \
+     FloatSwishTemplate, GatherTemplate, GemmTemplate, IntegerDivTemplate, ITAMaxTemplate, ITAPartialMaxTemplate, \
+     MatMulTemplate, MaxPoolTemplate, MulTemplate, PadTemplate, QuantTemplate, ReduceMeanTemplate, ReduceSumTemplate, \
+-    RequantShiftTemplate, ReshapeTemplate, RQIntegerDivTemplate, RQSiGELUTemplate, SliceTemplate, SubTemplate, \
+-    TransposeTemplate, iGELUTemplate, iLayernormTemplate, iRMSNormTemplate, iSoftmaxTemplate
++    RequantShiftTemplate, ReshapeTemplate, ResizeTemplate, RQIntegerDivTemplate, RQSiGELUTemplate, SliceTemplate, \
++    SubTemplate, TransposeTemplate, iGELUTemplate, iLayernormTemplate, iRMSNormTemplate, iSoftmaxTemplate
+ from Deeploy.Targets.Generic.TypeCheckers import AddChecker, BatchNormChecker, ConcatChecker, ConvChecker, \
+     DebugPrintChecker, DequantChecker, DivChecker, DummyChecker, GatherChecker, GELUChecker, GEMMChecker, \
+     LayerNormChecker, MatMulChecker, MaxPoolChecker, MulChecker, PadChecker, QuantChecker, ReduceMeanChecker, \
+-    ReduceSumChecker, ReluChecker, RequantShiftChecker, ReshapeChecker, RQIntegerDivChecker, SliceChecker, \
+-    SoftmaxChecker, TransposeChecker
++    ReduceSumChecker, ReluChecker, RequantShiftChecker, ReshapeChecker, ResizeChecker, RQIntegerDivChecker, \
++    SliceChecker, SoftmaxChecker, TransposeChecker
+ 
+ BasicTransformer = CodeTransformation([ArgumentStructGeneration(), MemoryManagementGeneration(), FutureGeneration()])
+ 
+@@ -252,6 +252,27 @@ BasicReshapeBindings = [
+                 ReshapeTemplate.referenceTemplate, ReshapeSkipTransformer) for type in IntegerDataTypes
+ ]
+ 
++BasicResizeBindings = [
++    NodeBinding(
++        ResizeChecker(
++            [PointerClass(type)] * 4,   # data_in, roi, scales, data_out
++            [PointerClass(type)]
++        ),
++        ResizeTemplate.referenceTemplate,
++        BasicTransformer
++    )
++    for type in IntegerDataTypes
++] + [
++    NodeBinding(
++        ResizeChecker(
++            [PointerClass(float32_t)] * 4,
++            [PointerClass(float32_t)]
++        ),
++        ResizeTemplate.referenceTemplate,
++        BasicTransformer
++    )
++]
++
+ BasicRQSBindings = [
+     NodeBinding(
+         RequantShiftChecker([PointerClass(type), PointerClass(int32_t),
+
+
+--- ./deps/deeploy/Deeploy/Targets/Generic/Platform.py.orig	2026-11-19 23:48:17.517194659 -0300
++++ ./deps/deeploy/Deeploy/Targets/Generic/Platform.py	2026-11-20 00:06:10.008235633 -0300
+@@ -15,15 +15,15 @@ from Deeploy.Targets.Generic.Bindings im
+     BasicITAPartialSoftmaxBinding, BasicITASoftmaxBinding, BasicLayerNormBindings, BasicMatMulBindings, \
+     BasicMaxPool1DBindings, BasicMaxPool2DBindings, BasicMulBindings, BasicPad1DBindings, BasicPad2DBindings, \
+     BasicPowBindings, BasicQuantBindings, BasicReduceMeanBindings, BasicReduceSumBindings, BasicReluBinding, \
+-    BasicReshapeBindings, BasicRQIntegerDivBinding, BasicRQSBindings, BasicRQSGELUBinding, BasicSigmoidBindings, \
+-    BasicSliceBindings, BasicSoftmaxBindings, BasicSqrtBindings, BasicSubBindings, BasicSwishBindings, \
+-    BasicTransposeBindings, DummyBinding
++    BasicReshapeBindings, BasicResizeBindings, BasicRQIntegerDivBinding, BasicRQSBindings, BasicRQSGELUBinding, \
++    BasicSigmoidBindings, BasicSliceBindings, BasicSoftmaxBindings, BasicSqrtBindings, BasicSubBindings, \
++    BasicSwishBindings, BasicTransposeBindings, DummyBinding
+ from Deeploy.Targets.Generic.Layers import AddLayer, AveragePoolLayer, BatchNormalizationLayer, CeilLayer, ClipLayer, \
+     ConcatLayer, ConvLayer, ConvTransposeLayer, DebugPrintLayer, DequantLayer, DivLayer, ExpLayer, FloorLayer, \
+     GatherLayer, GELULayer, GEMMLayer, GlobalAveragePoolLayer, GlobalMaxPoolLayer, GroupNormLayer, InstanceNormLayer, \
+-    ITAMaxLayer, LayerNormLayer, MatMulLayer, MaxPoolLayer, MulLayer, PadLayer, PowLayer, QuantLayer, ReduceMeanLayer, \
+-    ReduceSumLayer, ReluLayer, RequantShiftLayer, ReshapeLayer, RQIntegerDivLayer, RQSiGELULayer, SigmoidLayer, \
+-    SliceLayer, SoftmaxLayer, SqrtLayer, SubLayer, SwishLayer, TransposeLayer
++    ITAMaxLayer, LayerNormLayer, MatMulLayer, MaxPoolLayer, MulLayer, ONNXLayer, PadLayer, PowLayer, QuantLayer, \
++    ReduceMeanLayer, ReduceSumLayer, ReluLayer, RequantShiftLayer, ReshapeLayer, RQIntegerDivLayer, RQSiGELULayer, \
++    SigmoidLayer, SliceLayer, SoftmaxLayer, SqrtLayer, SubLayer, SwishLayer, TransposeLayer
+ from Deeploy.Targets.Generic.Parsers import AddParser, AveragePool1DParser, AveragePool2DParser, BatchNormParser, \
+     CeilParser, ClipParser, ConcatParser, ConvTranspose1DParser, DebugParser, DequantParser, DivParser, DummyParser, \
+     ExpParser, FlattenParser, FloorParser, GatherParser, GELUParser, GenericConv1DParser, GenericConv2DParser, \
+@@ -31,8 +31,8 @@ from Deeploy.Targets.Generic.Parsers imp
+     GlobalMaxPoolParser, GroupNormParser, HardSigmoidParser, HardSwishParser, InstanceNormParser, IntegerDivParser, \
+     ITAMaxParser, ITAPartialMaxParser, LayerNormParser, MatMulParser, MaxPool1DParser, MulParser, Pad1DParser, \
+     Pad2DParser, PowParser, QuantParser, ReduceMeanParser, ReduceSumParser, ReluParser, RequantShiftParser, \
+-    ReshapeParser, RQIntegerDivParser, RQSiGELUParser, SigmoidParser, SliceParser, SoftmaxParser, SqrtParser, \
+-    SubParser, SwishParser, TransposeParser, UnsqueezeParser, iLayerNormParser, iSoftmaxParser
++    ReshapeParser, ResizeParser, RQIntegerDivParser, RQSiGELUParser, SigmoidParser, SliceParser, SoftmaxParser, \
++    SqrtParser, SubParser, SwishParser, TransposeParser, UnsqueezeParser, iLayerNormParser, iSoftmaxParser
+ from Deeploy.Targets.Generic.Templates import AllocateTemplate, FreeTemplate
+ from Deeploy.Targets.Generic.TopologyOptimizationPasses.Passes import DequantPatternPass, ExtractPaddingFromConvPass, \
+     ExtractPaddingFromPoolPass, MatMulAddMergePass, MergeConstAddAndRequantPass, QuantPatternPass, \
+@@ -69,6 +69,7 @@ ReduceSumMapper = NodeMapper(ReduceSumPa
+ ReluMapper = NodeMapper(ReluParser(), [BasicReluBinding])
+ RequantShiftMapper = NodeMapper(RequantShiftParser(), BasicRQSBindings)
+ ReshapeMapper = NodeMapper(ReshapeParser(), BasicReshapeBindings)
++ResizeMapper = NodeMapper(ResizeParser(), BasicResizeBindings)
+ RQGELUMapper = NodeMapper(RQSiGELUParser(), [BasicRQSGELUBinding])
+ RQIntegerDivMapper = NodeMapper(RQIntegerDivParser(), [BasicRQIntegerDivBinding])
+ SoftmaxMapper = NodeMapper(SoftmaxParser(), BasicSoftmaxBindings)
+@@ -132,6 +133,7 @@ GenericMapping = {
+     'RequantizediGELU': RQSiGELULayer([RQGELUMapper]),
+     'RequantShift': RequantShiftLayer([RequantShiftMapper]),
+     'Reshape': ReshapeLayer([ReshapeMapper]),
++    'Resize': ONNXLayer([ResizeMapper]),
+     'RQIntegerDiv': RQIntegerDivLayer([RQIntegerDivMapper]),
+     'Squeeze': ReshapeLayer([UnsqueezeMapper]),
+     'Transpose': TransposeLayer([TransposeMapper]),
+
+
+--- ./deps/deeploy/Deeploy/Targets/Generic/Parsers.py.orig	2026-11-19 18:33:20.190485729 -0300
++++ ./deps/deeploy/Deeploy/Targets/Generic/Parsers.py	2026-11-23 22:20:23.557060156 -0300
+@@ -3124,3 +3124,126 @@ class GlobalMaxPoolParser(GlobalPoolPars
+ 
+     def parseNode(self, node: gs.Node) -> bool:
+         return super().parseNode(node) and node.op == 'GlobalMaxPool'
++
++
++class ResizeParser(NodeParser):
++    def parseNode(self, node: gs.Node) -> bool:
++        # This parser implements only a restricted subset of ONNX Resize.
++        # Supported configuration:
++        #   - 3 inputs: X, roi, scales
++        #   - nearest interpolation
++        #   - asymmetric coordinate transformation
++        #   - floor nearest mode
++        #   - scales-based resizing (no sizes input)
++
++        if len(node.inputs) != 3 or len(node.outputs) != 1:
++            return False
++
++        # The fourth input (sizes) must not be present.
++        # With three inputs, the third input corresponds to scales.
++        if not node.inputs[2].name:
++            return False
++
++        attrs = node.attrs
++
++        # Interpolation mode
++        mode = attrs.get('mode', b'nearest')
++        if isinstance(mode, bytes):
++            mode = mode.decode('utf-8')
++
++        if mode != 'nearest':
++            return False
++
++        # Coordinate transformation
++        coordinate_mode = attrs.get('coordinate_transformation_mode', b'half_pixel')
++        if isinstance(coordinate_mode, bytes):
++            coordinate_mode = coordinate_mode.decode('utf-8')
++
++        if coordinate_mode != 'asymmetric':
++            return False
++
++        # Nearest-neighbor rounding mode
++        nearest_mode = attrs.get('nearest_mode', b'round_prefer_floor')
++        if isinstance(nearest_mode, bytes):
++            nearest_mode = nearest_mode.decode('utf-8')
++
++        if nearest_mode != 'floor':
++            return False
++
++        # This implementation does not support aspect-ratio preservation.
++        keep_aspect_ratio_policy = attrs.get(
++            'keep_aspect_ratio_policy', b'stretch'
++        )
++
++        if isinstance(keep_aspect_ratio_policy, bytes):
++            keep_aspect_ratio_policy = keep_aspect_ratio_policy.decode('utf-8')
++
++        if keep_aspect_ratio_policy.strip() != 'stretch':
++            return False
++
++        # Store supported operator attributes
++        self.operatorRepresentation['mode'] = mode
++        self.operatorRepresentation['coordinate_transformation_mode'] = coordinate_mode
++        self.operatorRepresentation['nearest_mode'] = nearest_mode
++
++        return True
++
++    def parseNodeCtxt(self,
++                      ctxt: NetworkContext,
++                      node: gs.Node,
++                      channels_first: bool = True) -> Tuple[NetworkContext, bool]:
++        data_in = ctxt.lookup(node.inputs[0].name)
++        data_out = ctxt.lookup(node.outputs[0].name)
++
++        if len(data_in.shape) != 4 or len(data_out.shape) != 4:
++            return ctxt, False
++
++        scales_buf = ctxt.lookup(node.inputs[2].name)
++
++        if not isinstance(scales_buf, ConstantBuffer):
++            return ctxt, False
++
++        scales = np.asarray(scales_buf.values, dtype=np.float32)
++
++        if scales.shape != (4,):
++            return ctxt, False
++
++        # Batch and channel dimensions must not be resized
++        if not np.isclose(scales[0], 1.0) or not np.isclose(scales[1], 1.0):
++            return ctxt, False
++
++        if channels_first:
++            batch, ch, in_h, in_w = data_in.shape
++            out_batch, out_ch, out_h, out_w = data_out.shape
++        else:
++            batch, in_h, in_w, ch = data_in.shape
++            out_batch, out_h, out_w, out_ch = data_out.shape
++
++        if batch != out_batch or ch != out_ch:
++            return ctxt, False
++
++        if not np.isclose(scales[2], out_h / in_h):
++            return ctxt, False
++
++        if not np.isclose(scales[3], out_w / in_w):
++            return ctxt, False
++
++        self.operatorRepresentation['data_in'] = data_in.name
++        self.operatorRepresentation['data_out'] = data_out.name
++
++        self.operatorRepresentation['scale_h'] = float(scales[2])
++        self.operatorRepresentation['scale_w'] = float(scales[3])
++
++        self.operatorRepresentation['batch'] = int(batch)
++        self.operatorRepresentation['ch_im_in'] = int(ch)
++
++        self.operatorRepresentation['dim_im_in_x'] = int(in_w)
++        self.operatorRepresentation['dim_im_in_y'] = int(in_h)
++
++        self.operatorRepresentation['dim_im_out_x'] = int(out_w)
++        self.operatorRepresentation['dim_im_out_y'] = int(out_h)
++
++        self.operatorRepresentation['channels_first'] = channels_first
++
++        return ctxt, True
++
