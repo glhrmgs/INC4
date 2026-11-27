@@ -1,0 +1,77 @@
+--- pipeline/hetero_platform/generate.py.orig	2026-11-27 16:00:06.126964598 -0300
++++ pipeline/hetero_platform/generate.py	2026-11-27 17:36:35.591302329 -0300
+@@ -43,6 +43,8 @@ from Deeploy.EngineExtension.NetworkDepl
+     EngineColoringDeployerWrapper  # noqa: E402
+ from Deeploy.Targets.Generic.Deployer import GenericDeployer  # noqa: E402
+ from Deeploy.Targets.Generic.Platform import GenericOptimizer  # noqa: E402
++from Deeploy.AbstractDataTypes import PointerClass
++from Deeploy.CommonExtensions.DataTypes import float32_t
+ 
+ from hetero_platform import progress  # noqa: E402
+ from hetero_platform.mapper import make_mapper  # noqa: E402
+@@ -90,6 +92,16 @@ def build_deployer(graph, input_types, i
+     return EngineColoringDeployerWrapper(deployer, mapper_factory), mapper_factory
+ 
+ 
++def has_float_weights(model: onnx.ModelProto) -> bool:
++    for init in model.graph.initializer:
++        if init.data_type == onnx.TensorProto.FLOAT:
++            arr = onnx.numpy_helper.to_array(init)
++            if arr.size and not np.all(arr == np.round(arr)):
++                return True
++
++    return False
++
++
+ def main():
+     ap = argparse.ArgumentParser(description = __doc__,
+                                  formatter_class = argparse.RawDescriptionHelpFormatter)
+@@ -119,15 +131,24 @@ def main():
+     test_inputs = [inputs[k].reshape(-1).astype(np.float64) for k in inputs.files]
+     test_outputs = [outputs[k].reshape(-1).astype(np.float64) for k in outputs.files]
+ 
++    model = onnx.load_model(str(test_dir / "network.onnx"))
++    graph = gs.import_onnx(model)
++    float_net = has_float_weights(model)
++
++
+     # signProp is off: the fp32 path this board targets has no offsets to
+     # propagate, and Deeploy's Generic platform is not a signProp platform.
+     input_types, input_offsets = {}, {}
+-    for i, values in enumerate(test_inputs):
++    for i, (key, values) in enumerate(zip(inputs.files, test_inputs)):
+         if np.prod(values.shape) == 0:
+             continue
+-        _type, offset = inferTypeAndOffset(values, False)
+-        input_types[f"input_{i}"] = _type
+-        input_offsets[f"input_{i}"] = offset
++        if float_net and np.issubdtype(inputs[key].dtype, np.floating):
++            input_types[f"input_{i}"] = PointerClass(float32_t)
++            input_offsets[f"input_{i}"] = 0
++        else:
++            _type, offset = inferTypeAndOffset(values, False)
++            input_types[f"input_{i}"] = _type
++            input_offsets[f"input_{i}"] = offset
+ 
+     deployer, mapper_factory = build_deployer(
+         graph,
+
+
+--- pipeline/hetero_platform/engines.py.orig	2026-11-27 17:21:29.298828959 -0300
++++ pipeline/hetero_platform/engines.py	2026-11-27 17:21:46.151284039 -0300
+@@ -159,6 +159,15 @@ class ClusterEngine(DeploymentEngine):
+             return False
+         if not _all_fp32(node):
+             return False
++        # O kernel hand-written do snitch/spatz só cobre Conv2D com group=1
++        # e kernel_shape=3x3. Convoluções depthwise (group>1) ou com kernel 1x1
++        # caem no cva6, que tem o GenericConv2DParser/DWConv2DParser completos.
++        if node.op == "Conv":
++            attrs = node.attrs
++            group = attrs.get("group", 1)
++            kernel_shape = list(attrs.get("kernel_shape", []))
++            if group != 1 or kernel_shape != [3, 3]:
++                return False
+         size = working_set_bytes(node)
+         return size is not None and size <= self.tcdm_budget
+ 
