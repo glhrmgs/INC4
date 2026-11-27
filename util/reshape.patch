@@ -1,0 +1,43 @@
+--- deps/deeploy/Deeploy/Targets/Generic/Templates/ReshapeTemplate.py.orig	2026-11-27 13:57:57.629067066 -0300
++++ deps/deeploy/Deeploy/Targets/Generic/Templates/ReshapeTemplate.py	2026-11-27 14:02:03.247699710 -0300
+@@ -3,6 +3,7 @@
+ # SPDX-License-Identifier: Apache-2.0
+ 
+ from typing import Dict, List, Tuple
++import numpy as np
+ 
+ from Deeploy.DeeployTypes import NetworkContext, NodeTemplate, OperatorRepresentation, VariableBuffer
+ 
+@@ -30,14 +31,29 @@ class _ReshapeTemplate(NodeTemplate):
+         bufferOut = ctxt.lookup(operatorRepresentation['data_out'])
+         assert isinstance(bufferOut, VariableBuffer)
+ 
+-        # Link aliases to each buffer
+-        bufferIn.aliases.add(bufferOut.name)
+-        bufferOut.aliases.add(bufferIn.name)
++        # If Reshape is a network output the copy output buffer content.
++        # Otherwise just make a pointer (alias) to it.
++        isNetworkOutput = ctxt.is_global(bufferOut.name)
++        operatorRepresentation['copy_out'] = isNetworkOutput
++        operatorRepresentation['copy_size'] = int(np.prod(bufferIn.shape))
++
++        if not isNetworkOutput:
++            # Link aliases to each buffer
++            bufferIn.aliases.add(bufferOut.name)
++            bufferOut.aliases.add(bufferIn.name)
+ 
+         return ctxt, operatorRepresentation, []
+ 
+ 
+ referenceTemplate = _ReshapeTemplate("""
+ // Reshape (Name: ${nodeName}, Op: ${nodeOp})
++% if copy_out:
++BEGIN_SINGLE_CORE
++for (uint32_t i = 0; i < ${copy_size}; i++) {
++    ${data_out}[i] = ${data_in}[i];
++}
++END_SINGLE_CORE
++% else:
+ SINGLE_CORE ${data_out} = ${data_in};
++% endif
+ """)

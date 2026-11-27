@@ -1,5 +1,5 @@
---- ./pipeline/run.py.orig	2026-11-23 23:12:25.524616500 -0300
-+++ ./pipeline/run.py	2026-11-23 23:15:08.394972896 -0300
+--- pipeline/run.py.orig	2026-11-27 13:51:19.594318602 -0300
++++ pipeline/run.py	2026-11-27 13:47:21.195880931 -0300
 @@ -180,15 +180,44 @@ def resolve_test_dir(op: str) -> Path:
               f"(tried absolute path and relative to {DEEPLOY_TEST})")
  
@@ -41,8 +41,8 @@
 +    # input. All entries must agree.
 +    dtypes = {arr.dtype for arr in data.values()}
 +    if dtypes == {np.float32} or (len(dtypes) == 1 and np.issubdtype(next(iter(dtypes)), np.floating)):
-+        n_inputs = len(data)
-+        return [f"input_{i}=float32_t" for i in range(n_inputs)], [f"input_{i}=0" for i in range(n_inputs)]
++        names = list(data.files)
++        return [f"{k}=float32_t" for k in names], [f"{k}=0" for k in names]
 +    return [], []
 +
 +
